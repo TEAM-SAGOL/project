@@ -22,7 +22,7 @@ def generate_summary_with_gpt(texts):
                 {"role": "system", "content": "너는 조직 심리 분석 전문가야."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0
+            temperature=0.1
         )
         return response.choices[0].message.content
     except Exception as e:
