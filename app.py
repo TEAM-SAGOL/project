@@ -1,17 +1,27 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import plotly.express as px
+from matplotlib.ticker import MaxNLocator
 import seaborn as sns
 import openai
-from langchain.chat_models import ChatOpenAI
-from modules.categorize import run_keyword_analysis, generate_wordcloud_from_freq
-from modules.summary_module import generate_summary_with_gpt
-from modules.sentiment_module import (
+import sys
+import os
+import io
+
+# 모듈 경로 추가
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from modules.analysis.categorize import run_keyword_analysis, generate_wordcloud_from_freq
+from modules.analysis.summary_module import generate_summary_with_gpt
+from modules.analysis.sentiment_module import (
     analyze_sentiment_with_finbert,
     refine_neutral_keywords_with_gpt,
     merge_sentiment_results,
     summarize_sentiment_by_category
-)    
+)
+from modules.analysis_pipeline import AnalysisPipeline
+from langchain.chat_models import ChatOpenAI
 
 # 폰트 설정
 plt.rcParams['font.family'] = 'Malgun Gothic'
@@ -34,14 +44,14 @@ menu = st.sidebar.selectbox("페이지 선택", ["🏠 홈", "📊 분석", "⚙
 # 홈 페이지
 if menu == "🏠 홈":
     st.title("💼 대상자 & 관계 기반 HR 응답 분석 대시보드")
-    uploaded = st.file_uploader("📂 엑셀 파일 업로드", type=["xlsx"])
+    uploaded = st.file_uploader("📂 엑셀 파일 업로드", type=["xlsx", "xls"])
 
     if uploaded:
         df = pd.read_excel(uploaded)
         st.success("업로드 완료!")
         st.dataframe(df)
 
-        # ⬇️ 사용자에게 컬럼 선택 UI 제공
+        # AI로 컬럼/로우 데이터 분석 
         columns = df.columns.tolist()
         none_option = "❌ 선택 안함"
 
@@ -76,27 +86,30 @@ if menu == "🏠 홈":
                     st.subheader("☁️ GPT 키워드 기반 워드클라우드")
                     wc = generate_wordcloud_from_freq(freq_df)
                     if wc:
+                        st.success("워드클라우드 생성!")
                         fig, ax = plt.subplots()
                         ax.imshow(wc, interpolation='bilinear')
                         ax.axis('off')
                         st.pyplot(fig)
-                        st.success("워드클라우드 생성!")
                     else:
                         st.warning("워드클라우드를 생성할 수 없습니다.")
 
                 # 📊 GPT 키워드 기반 빈도 막대그래프
                 with col2:
                     st.subheader("📊 GPT 키워드 빈도 상위 20개")
+                    st.success("키워드 빈도 분석 완료!")
+                    freq_df["count"] = freq_df["count"].astype(int)
                     freq_plot_df = freq_df.sort_values(by="count", ascending=False).head(20)
                     fig2, ax2 = plt.subplots()
                     sns.barplot(data=freq_plot_df, y='keyword', x='count', hue='category', dodge=False, ax=ax2)
+                    # xlabel 정수
+                    ax2.xaxis.set_major_locator(MaxNLocator(integer=True))
+                    
                     ax2.set_ylabel("키워드")
-                    ax2.set_xlabel("빈도")
+                    ax2.set_xlabel("count")
                     st.pyplot(fig2)
-                    st.success("키워드 빈도 분석 완료!")
                     
                 
-
                 # 감정 분석
                 st.subheader("❤️ 감정 분석 결과")
                 with st.spinner("감정 분석 중..."):
@@ -116,17 +129,22 @@ if menu == "🏠 홈":
                     # ax1.set_ylabel("응답 수")
                     # st.pyplot(fig1)
 
-                    # 3. 키워드별 감정 비율 시각화
-                    pivot_df = summary.pivot(index='keyword', columns='sentiment', values='percentage').fillna(0)
-                    fig2, ax2 = plt.subplots(figsize=(8, 6))
-                    pivot_df.plot(kind='bar', stacked=True, colormap='Set2', ax=ax2)
-                    ax2.set_title("카테고리별 감정 비율")
-                    ax2.set_ylabel("비율 (%)")
-                    ax2.set_xlabel("키워드")
-                    ax2.tick_params(axis='x', rotation=45)  
-                    st.pyplot(fig2)
-                    st.success("감정 분석 완료!")
+                    # 3. 키워드별 감정 비율 시각화(Plotly PieChart 시각화)
+                    overall_sentiment = summary.groupby('sentiment')['percentage'].sum().reset_index()
 
+                    fig = px.pie(
+                        overall_sentiment,
+                        names='sentiment',
+                        values='percentage',
+                        title='전체 감정 분포 (모든 키워드 기준)',
+                        color='sentiment',
+                        color_discrete_map={'긍정': '#63b2ee', '부정': '#ff9999', '중립': '#ffcc66'}
+                    )
+
+                    fig.update_traces(textinfo='percent+label')
+                    fig.update_layout(height=400)
+                    st.plotly_chart(fig)
+                                        
                 # GPT 요약
                 st.subheader("🧠 GPT 요약 결과")
                 with st.spinner("요약 중..."):

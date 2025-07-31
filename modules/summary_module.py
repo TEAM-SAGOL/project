@@ -1,9 +1,7 @@
-# summary_module.py
-
 import openai
 import streamlit as st
 
-# ✅ GPT 요약 함수
+# GPT 요약 함수 
 def generate_summary_with_gpt(texts):
     client = openai.OpenAI(api_key=st.secrets["your_section"]["api_key"])
 

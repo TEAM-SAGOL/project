@@ -5,7 +5,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from transformers import pipeline
 from langchain.schema import HumanMessage
-from .categorize import run_keyword_analysis 
+from modules.categorize import run_keyword_analysis 
 
 # 0단계: 모델 로딩 (FinBERT)
 classifier = pipeline("sentiment-analysis", model="snunlp/KR-FinBert-SC")

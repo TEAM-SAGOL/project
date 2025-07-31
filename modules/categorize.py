@@ -1,5 +1,3 @@
-# categorize.py
-
 import json, re
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -115,7 +113,7 @@ def run_keyword_analysis(texts, llm):
     df_kw = pd.DataFrame(keywords, columns=["keyword"])
     df_kw["category"] = df_kw["keyword"].map(categorized).fillna("기타")
     freq = df_kw.groupby(["keyword", "category"]).size().reset_index(name="count")
-    freq["percentage"] = freq["count"] / freq["count"].sum() * 100
+
 
     return freq, categorized
 
@@ -123,7 +121,7 @@ def run_keyword_analysis(texts, llm):
 def generate_wordcloud_from_freq(freq_df):
     
     # 빈 워드클라우드 반환
-    if freq_df.empty or 'keyword' not in freq_df.columns or 'count' not in freq_df.columns: # 
+    if freq_df.empty or 'keyword' not in freq_df.columns or 'count' not in freq_df.columns: 
         print("⚠️ freq_df is empty or missing required columns.")
         return None  
     
