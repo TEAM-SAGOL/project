@@ -23,7 +23,7 @@ st.set_page_config(page_title="HR 응답 분석", layout="wide")
 
 # GPT 모델 정의
 llm = ChatOpenAI(
-    model="gpt-4o",            
+    model="gpt-4o-mini",            
     temperature=0,
     openai_api_key=st.secrets["your_section"]["api_key"]  
 )
