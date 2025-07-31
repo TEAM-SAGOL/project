@@ -10,6 +10,7 @@ from langchain_core.exceptions import OutputParserException
 from wordcloud import WordCloud
 
 
+
 # 1. 프롬프트 엔지니어링으로 키워드 추출 + 키워드 카테고리 분류 
 keyword_schema = ResponseSchema(name='keywords', description='추출된 핵심 키워드 리스트')
 keyword_parser = StructuredOutputParser.from_response_schemas([keyword_schema])
@@ -66,7 +67,7 @@ def process_batch(batch, llm):
                 parsed = json.loads(match.group(0))
                 return parsed.get("keywords", [])
             except:
-                return []
+                return [] 
         return []
 
 def extract_keywords_parallel(texts, llm, chunk_size=5, max_workers=4):
@@ -84,18 +85,20 @@ def categorize_keywords_batch(keywords, llm, batch_size=50):
     for i in range(0, len(keywords), batch_size):
         batch = keywords[i:i+batch_size]
         prompt_text = category_prompt.format_messages(
-            keywords=json.dumps(batch, ensure_ascii=False)).to_string()
+            keywords=json.dumps(batch, ensure_ascii=False))[0].content
+        
+        
         response = llm([HumanMessage(content=prompt_text)])
         raw = response.content
 
         try:
             parsed = category_parser.parse(raw)
-            categorized.extend({'categorize': parsed['categorized']})
+            categorized.extend(parsed)
         except:
             match = re.search(r"\[.*\]", raw, flags=re.DOTALL)
             if match:
                 try:
-                    categorized.extend({'categorize': json.loads(match.group(0))})
+                    categorized.extend(json.loads(match.group(0)))
                 except:
                     continue
     return categorized
@@ -118,6 +121,12 @@ def run_keyword_analysis(texts, llm):
 
 # 5. 워드클라우드 
 def generate_wordcloud_from_freq(freq_df):
-    freq_dict = pd.Series(freq_df['count'].values, index=freq_df['keyword']).to_dict()
+    
+    # 빈 워드클라우드 반환
+    if freq_df.empty or 'keyword' not in freq_df.columns or 'count' not in freq_df.columns: # 
+        print("⚠️ freq_df is empty or missing required columns.")
+        return None  
+    
+    freq_dict = pd.Series(freq_df['count'].values, index=freq_df['keyword']).to_dict() #
     wc = WordCloud(width=800, height=400, background_color='white', font_path='malgun.ttf')
     return wc.generate_from_frequencies(freq_dict)
