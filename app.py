@@ -1,27 +1,22 @@
 import streamlit as st
 import pandas as pd
+import sys
+import os
+import io
 import matplotlib.pyplot as plt
 import plotly.express as px
 from matplotlib.ticker import MaxNLocator
 import seaborn as sns
-import openai
-import sys
-import os
-import io
-
-# 모듈 경로 추가
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from modules.analysis.categorize import run_keyword_analysis, generate_wordcloud_from_freq
-from modules.analysis.summary_module import generate_summary_with_gpt
-from modules.analysis.sentiment_module import (
+from modules.categorize import run_keyword_analysis, generate_wordcloud_from_freq
+from modules.summary_module import generate_summary_with_gpt
+from modules.sentiment_module import (
     analyze_sentiment_with_finbert,
     refine_neutral_keywords_with_gpt,
     merge_sentiment_results,
     summarize_sentiment_by_category
 )
-from modules.analysis_pipeline import AnalysisPipeline
 from langchain.chat_models import ChatOpenAI
+from modules.analysis_pipeline import AnalysisPipeline
 
 # 폰트 설정
 plt.rcParams['font.family'] = 'Malgun Gothic'
@@ -38,125 +33,285 @@ llm = ChatOpenAI(
     openai_api_key=st.secrets["your_section"]["api_key"]  
 )
 
-# 페이지 선택
-menu = st.sidebar.selectbox("페이지 선택", ["🏠 홈", "📊 분석", "⚙️ 설정"])
+
+# ✅ 사이드바 - 진행 상황 표시 및 페이지 선택
+with st.sidebar:
+    # 🔧 페이지 이동
+    menu = st.selectbox("📌 페이지 선택", ["🏠 홈", "📊 분석", "⚙️ 설정"])
+    st.header("📋 분석 진행 단계")
+
+    # 진행 단계 정의
+    steps = [
+        "1️⃣ 기획서 생성",
+        "2️⃣ 기획서 검토",
+        "3️⃣ 분석 실행",
+        "4️⃣ 결과 확인"
+    ]
+
+    # 현재 단계 세션에서 가져오기 (기본: 1)
+    current_step = st.session_state.get('current_step', 1)
+
+    # 단계별 상태 표시
+    for i, step in enumerate(steps, 1):
+        if i == current_step:
+            st.success(f"**{step}** ← 현재 단계")
+        elif i < current_step:
+            st.info(f"~~{step}~~ ✅")
+        else:
+            st.write(step)
+
+    st.markdown("---")
+
+    # 🔁 세션 초기화 버튼
+    if st.button("🔄 처음부터 다시 시작", use_container_width=True):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
 
 # 홈 페이지
 if menu == "🏠 홈":
-    st.title("💼 대상자 & 관계 기반 HR 응답 분석 대시보드")
-    uploaded = st.file_uploader("📂 엑셀 파일 업로드", type=["xlsx", "xls"])
+    st.title("🔍 AI 데이터 분석 대시보드")
+    st.markdown("---")
+    
+    #파이프라인 초기화
+    pipeline = AnalysisPipeline()
+    
+    # 파일 업로드
+    uploaded = st.file_uploader(
+        "## 📊 Excel 파일을 업로드하세요",
+        type=['xlsx', 'xls'],
+        help="분석할 데이터가 포함된 Excel 파일을 선택해주세요."
+    )
 
     if uploaded:
-        df = pd.read_excel(uploaded)
+        df = pd.read_excel(uploaded, index_col=None)
         st.success("업로드 완료!")
+        # Unnamed 컬럼 제거
+        df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+        # 데이터 타입 정리 (Arrow 호환성)
+        for col in df.columns:
+            if df[col].dtype == 'object':
+                try:
+                    # 혼재된 타입을 문자열로 통일
+                    df[col] = df[col].astype(str)
+                    # NaN 값을 빈 문자열로 변경
+                    df[col] = df[col].replace('nan', '')
+                except:
+                    continue
         st.dataframe(df)
+        st.markdown('---')
+        
+        # 데이터 기본 정보 표시
+        with st.container():
+            st.markdown("### 📊 데이터 기본 정보")
+            col1, col2, col3 = st.columns(3)
 
-        # AI로 컬럼/로우 데이터 분석 
-        columns = df.columns.tolist()
-        none_option = "❌ 선택 안함"
-
-        name_col = st.selectbox("🧾 대상자 컬럼을 선택하세요(없으면 '선택 안함')", [none_option] + columns)
-        relation_col = st.selectbox("🔗 관계 컬럼을 선택하세요(없으면 '선택 안함')", [none_option] + columns)
-        text_col = st.selectbox("📝 텍스트 컬럼을 선택하세요", columns)
-
-        if text_col:
-            filtered_df = df.copy()
-
-            # 대상자 선택
-            if name_col != none_option:
-                name_values = df[name_col].dropna().unique()
-                selected_name = st.selectbox("👤 대상자 선택", name_values)
-                filtered_df = filtered_df[filtered_df[name_col] == selected_name]
-                st.spinner("분석 중...")
+            with col1:
+                with st.container():
+                    st.metric("행 수", f"{len(df):,}")
+            with col2:
+                with st.container():
+                    st.metric("컬럼 수", len(df.columns))
+            with col3:
+                with st.container():
+                    st.metric("데이터 크기", f"{df.shape[0] * df.shape[1]:,} cells")
+    
+        # 데이터 설명 입력
+            description = st.text_area(
+                "📝 데이터에 대한 설명을 입력해주세요",
+                placeholder="예: 2024년 직원 만족도 설문조사 결과입니다. 직원들의 업무 환경, 복지, 커뮤니케이션에 대한 의견이 포함되어 있습니다.", #버튼 없어두 되나
+                height=100,
+                help="AI가 데이터를 이해하고 적절한 분석 계획을 세우는 데 도움이 됩니다."
+            )
+            if description.strip():
+                st.markdown("---")
                 
+                # 단계별 실행
+                current_step = st.session_state.get('current_step', 1)
                 
-            # 텍스트 리스트 추출 (dropna 후 시리즈 형태 유지)
-            text_series = filtered_df[text_col].dropna().astype(str)
-            texts = text_series.tolist()
-
-            if texts:
-                freq_df, categorized_df = run_keyword_analysis(texts, llm)
-                # extracted_keywords = freq_df["keyword"].unique().tolist() # 리스트 변환
-                # freq_dict = pd.Series(extracted_keywords).value_counts().to_dict()
+                if current_step == 1:
+                    # 1단계: 분석 기획서 생성
+                    pipeline.step1_generate_plan(df, description)
                 
-                col1, col2 = st.columns(2)
+                elif current_step == 2:
+                    # 2단계: 기획서 검토
+                    pipeline.step2_review_plan()
                 
-                # ☁️ GPT 키워드 기반 워드클라우드
-                with col1:
-                    st.subheader("☁️ GPT 키워드 기반 워드클라우드")
-                    wc = generate_wordcloud_from_freq(freq_df)
-                    if wc:
-                        st.success("워드클라우드 생성!")
-                        fig, ax = plt.subplots()
-                        ax.imshow(wc, interpolation='bilinear')
-                        ax.axis('off')
-                        st.pyplot(fig)
-                    else:
-                        st.warning("워드클라우드를 생성할 수 없습니다.")
-
-                # 📊 GPT 키워드 기반 빈도 막대그래프
-                with col2:
-                    st.subheader("📊 GPT 키워드 빈도 상위 20개")
-                    st.success("키워드 빈도 분석 완료!")
-                    freq_df["count"] = freq_df["count"].astype(int)
-                    freq_plot_df = freq_df.sort_values(by="count", ascending=False).head(20)
-                    fig2, ax2 = plt.subplots()
-                    sns.barplot(data=freq_plot_df, y='keyword', x='count', hue='category', dodge=False, ax=ax2)
-                    # xlabel 정수
-                    ax2.xaxis.set_major_locator(MaxNLocator(integer=True))
-                    
-                    ax2.set_ylabel("키워드")
-                    ax2.set_xlabel("count")
-                    st.pyplot(fig2)
-                    
+                elif current_step == 3:
+                    # 3단계: 분석 실행
+                    pipeline.step3_execute_analysis(df)
                 
-                # 감정 분석
-                st.subheader("❤️ 감정 분석 결과")
-                with st.spinner("감정 분석 중..."):
+                elif current_step == 4:
+                    # 4단계: 결과 표시
+                    pipeline.step4_display_results()
+
+                results = st.session_state.get("analysis_results", {})
+
+                if results:
+                    # 1️⃣ 키워드 분석 결과 시각화
+                    if "keyword_analysis" in results:
+                        keyword_list = results["keyword_analysis"].get("keywords", [])
+                        if keyword_list:
+                            st.subheader("☁️ GPT 키워드 기반 워드클라우드")
+
+                            df_kw = pd.DataFrame(keyword_list)
+                            if not df_kw.empty and {'keyword', 'category'}.issubset(df_kw.columns):
+                                # 워드클라우드
+                                wc = generate_wordcloud_from_freq(df_kw)
+                                if wc:
+                                    fig, ax = plt.subplots()
+                                    ax.imshow(wc, interpolation='bilinear')
+                                    ax.axis('off')
+                                    st.pyplot(fig)
+                                else:
+                                    st.warning("워드클라우드를 생성할 수 없습니다.")
+                            else:
+                                st.warning("키워드 데이터에 'keyword' 또는 'category' 컬럼이 없습니다.")
+
+                            # 키워드 빈도 막대 그래프
+                            st.subheader("📊 GPT 키워드 빈도 상위 20개")
+                            try:
+                                df_kw = pd.DataFrame(keyword_list)
+
+                                if "keyword" in df_kw.columns:
+                                    # count 직접 세기
+                                    df_kw = df_kw.groupby(["keyword", "category"]).size().reset_index(name="count")
+                                    
+                                    # 상위 20개 추출
+                                    top20 = df_kw.sort_values(by="count", ascending=False).head(20)
+                        
+
+                                    fig2, ax2 = plt.subplots()
+                                    sns.barplot(data=top20, y='keyword', x='count', hue='category', dodge=False, ax=ax2)
+                                    ax2.set_ylabel("키워드")
+                                    ax2.set_xlabel("count")
+                                    ax2.xaxis.set_major_locator(MaxNLocator(integer=True))
+                                    st.pyplot(fig2)
+                                else:
+                                    st.warning("키워드 데이터에 'keyword' 컬럼이 없습니다.")
+                            except Exception as e:
+                                st.warning(f"막대그래프 생성 중 오류 발생: {e}")
+                        else:
+                            st.warning("키워드 리스트가 비어 있습니다.")
+
+                    # 2️⃣ 요약 분석 결과 시각화
+                    if "summary_analysis" in results:
+                        summary_text = results["summary_analysis"].get("summary", "")
+                        if summary_text:
+                            st.subheader("🧠 GPT 요약 결과")
+                            st.success("요약 완료!")
+                            st.write(summary_text)
+                        else:
+                            st.warning("요약된 내용이 없습니다.")
+
+                    # 3️⃣ 감정 분석 시각화
+                    if "sentiment_analysis" in results: #예외 처리 발생함..
+                        sentiment_result = results["sentiment_analysis"]
+                        summary_df = sentiment_result.get("summary_df")
+
+                        if summary_df:
+                            summary_df = pd.DataFrame(summary_df)
+
+                            if not summary_df.empty and 'sentiment' in summary_df.columns:
+                                st.subheader("❤️ 감정 분석 결과")
+                                overall_sentiment = summary_df.groupby('sentiment')['percentage'].sum().reset_index()
+
+                                fig = px.pie(
+                                    overall_sentiment,
+                                    names='sentiment',
+                                    values='percentage',
+                                    title='전체 감정 분포',
+                                    color='sentiment',
+                                    color_discrete_map={'긍정': '#63b2ee', '부정': '#ff9999', '중립': '#ffcc66'}
+                                )
+                                fig.update_traces(textinfo='percent+label')
+                                st.plotly_chart(fig)
+                            else:
+                                st.warning("감정 분석 결과가 비어있거나 형식이 맞지 않습니다.")
+                        else:
+                            st.warning("감정 분석 요약 데이터가 없습니다.")
+                else:
+                    st.info("👆 데이터에 대한 설명을 입력하면 AI 분석을 시작할 수 있습니다.")
                     
-                    # 1. 감정 분석 처리
-                    sentiment_df, _, _ = analyze_sentiment_with_finbert(texts, llm)
-                    refined_df = refine_neutral_keywords_with_gpt(sentiment_df, llm)
-                    updated_df = merge_sentiment_results(sentiment_df, refined_df)
-                    summary = summarize_sentiment_by_category(freq_df, updated_df)
-                    
-                    # # 2. 감정 분포 시각화
-                    # sentiment_counts = updated_df['sentiment'].value_counts()
-                    # fig1, ax1 = plt.subplots(figsize=(5, 5))
-                    # sentiment_counts.plot(kind='bar', color=['green', 'red', 'gray'], ax=ax1)
-                    # ax1.set_title("감정 분석 결과 분포")
-                    # ax1.set_xlabel("감정 유형")
-                    # ax1.set_ylabel("응답 수")
-                    # st.pyplot(fig1)
+    else:
+        # 업로드 안내
+        st.info("📁 Excel 파일을 업로드하여 AI 기반 데이터 분석을 시작하세요!")
+        st.markdown("---")
+        
+        with st.container():
+        # 샘플 데이터 다운로드 제공
+            st.write("### 📋 사용 방법")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**1단계: 데이터 업로드**")
+                st.write("- Excel 파일(.xlsx, .xls) 업로드")
+                st.write("- 텍스트 데이터가 포함된 컬럼 필요")
+                
+                st.write("**2단계: 데이터 설명**")
+                st.write("- 데이터의 목적과 내용 설명")
+                st.write("- AI가 분석 계획 수립에 활용")
+            
+            with col2:
+                st.write("**3단계: AI 분석 계획**")
+                st.write("- AI가 자동으로 분석 기획서 생성")
+                st.write("- 사용자가 검토 및 수정 가능")
+                
+                st.write("**4단계: 자동 분석**")
+                st.write("- 감정 분석, 키워드 추출, 요약 등")
+                st.write("- 결과를 시각화로 제공")
+            
+            st.markdown("---")
+            # 샘플 데이터 예시
+            st.write("### 📄 샘플 데이터 형식")
+            
+            sample_data = pd.DataFrame({
+                '이름': ['홍길동', '김철수', '이영희'],
+                '부서': ['개발팀', '마케팅팀', '인사팀'],
+                '만족도': [4, 3, 5],
+                '의견': [
+                    '업무 환경이 좋습니다. 동료들과의 협업도 원활해요.',
+                    '워라밸이 개선되었으면 좋겠습니다.',
+                    '복지 제도가 만족스럽고 회사 분위기가 좋아요.'
+                ]
+            })
+        
+        st.dataframe(sample_data, use_container_width=True)
+        
+        # 샘플 파일 다운로드 버튼
+        try:
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                sample_data.to_excel(writer, index=False, sheet_name='Sample Data')
 
-                    # 3. 키워드별 감정 비율 시각화(Plotly PieChart 시각화)
-                    overall_sentiment = summary.groupby('sentiment')['percentage'].sum().reset_index()
+            excel_data = output.getvalue()
 
-                    fig = px.pie(
-                        overall_sentiment,
-                        names='sentiment',
-                        values='percentage',
-                        title='전체 감정 분포 (모든 키워드 기준)',
-                        color='sentiment',
-                        color_discrete_map={'긍정': '#63b2ee', '부정': '#ff9999', '중립': '#ffcc66'}
-                    )
+            st.download_button(
+                label = "📥 샘플 데이터 다운로드",
+                data = excel_data,
+                file_name = "sample_survey_data.xlsx",
+                mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"샘플 데이터 다운로드 중 오류 발생: {e}")
+        
+        # 푸터
+        st.markdown("---")
+        st.markdown(
+            """
+            <div style='text-align: center; color: #666; font-size: 14px;'>
+                🤖 AI 기반 데이터 분석 대시보드 | 
+                Built with Streamlit & OpenAI GPT-4
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
 
-                    fig.update_traces(textinfo='percent+label')
-                    fig.update_layout(height=400)
-                    st.plotly_chart(fig)
-                                        
-                # GPT 요약
-                st.subheader("🧠 GPT 요약 결과")
-                with st.spinner("요약 중..."):
-                    summary = generate_summary_with_gpt(texts)
-                    st.success("요약 완료!")
-                    st.write(summary)
-                    
-            else:
-                st.warning("분석할 텍스트가 없습니다.")
-        else:
-            st.warning("텍스트 컬럼을 찾을 수 없습니다.")
 
+        
+                
 # ✅ 추후 확장용 페이지
 elif menu == "📊 분석":
     st.title("📊 분석 기능")
@@ -165,3 +320,5 @@ elif menu == "📊 분석":
 elif menu == "⚙️ 설정":
     st.title("⚙️ 설정")
     st.write("API 키 등 설정 가능")
+    
+    
