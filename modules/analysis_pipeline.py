@@ -11,14 +11,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from langchain_openai import ChatOpenAI
 from modules.profiling_module import AnalysisPlan, validate_plan
 from modules.ui_components import display_analysis_plan, display_plan_review_interface, feedback_input_interface
-from modules.categorize import generate_wordcloud_from_freq, categorize_keywords_batch
+from modules.categorize import generate_wordcloud_from_freq, categorize_keywords_batch, run_keyword_analysis
 from modules.summary_module import generate_summary_with_gpt 
 from modules.sentiment_module import merge_sentiment_results, refine_neutral_keywords_with_gpt, analyze_sentiment_with_finbert, summarize_sentiment_by_category
 
 class AnalysisPipeline:
     """분석 파이프라인 관리 클래스"""
     
-    def __init__(self):
+    def __init__(self, llm):
+        self.llm = llm
         self.planner = AnalysisPlan()
         self.reset_session_state()
     
@@ -32,7 +33,34 @@ class AnalysisPipeline:
             st.session_state.analysis_results = None
         if 'current_step' not in st.session_state:
             st.session_state.current_step = 1
-            
+    
+    # 키워드 분석         
+    def keyword_analysis(self, data, target_columns):
+        texts = []
+        for col in target_columns:
+            if col in data.columns:
+                texts.extend(data[col].dropna().astype(str).tolist())
+
+        result = run_keyword_analysis(texts, self.llm)
+        return result 
+    
+    # 감정 분석 
+    def sentiment_result(self, data, target_columns):
+        texts = []
+        for col in target_columns:
+            if col in data.columns:
+                texts.extend(data[col].dropna().astype(str).tolist())
+        
+        return summarize_sentiment_by_category(texts, self.llm)
+        
+    # 분석 요약 
+    def summary_result(self, data, target_columns):
+        texts = []
+        for col in target_columns:
+            if col in data.columns:
+                texts.extend(data[col].dropna().astype(str).tolist())
+        return generate_summary_with_gpt(texts, self.llm)
+    
     def _display_summary_results(self, summary_result: dict) -> str:
         return summary_result.get("summary", "")
 
@@ -479,66 +507,6 @@ class AnalysisPipeline:
                 "status": "completed"
             }
 
-        except Exception as e:
-            return {"error": str(e), "texts_analyzed": 0}
-
-    def _run_keyword_analysis_fast(self, data: pd.DataFrame, target_columns: list) -> Dict[str, Any]:
-        """🚀 병렬 키워드 분석 (스레드 안전 버전)"""
-        
-        try:
-            # LLM 초기화
-            try:
-                llm = ChatOpenAI(
-                    model="gpt-3.5-turbo",
-                    openai_api_key=st.secrets["your_section"]["api_key"],
-                    temperature=0
-                )
-            except Exception as e:
-                return {"error": f"LLM 초기화 실패: {str(e)}", "texts_analyzed": 0}
-            
-            # 텍스트 데이터 수집
-            texts = []
-            for col in target_columns:
-                if col in data.columns:
-                    valid_texts = data[col].dropna().astype(str)
-                    valid_texts = valid_texts[valid_texts.str.strip() != '']
-                    texts.extend(valid_texts.tolist())
-            
-            if not texts:
-                return {"error": "분석할 텍스트가 없습니다.", "texts_analyzed": 0}
-            
-            # 텍스트 품질 검증
-            avg_length = sum(len(str(text)) for text in texts) / len(texts)
-            
-            # 키워드 분석 모듈 로드
-            try:
-                from modules.categorize import extract_keywords_parallel
-            except ImportError as e:
-                return {"error": f"키워드 분석 모듈 로드 실패: {str(e)}", "texts_analyzed": len(texts)}
-            
-            # 키워드 추출 실행
-            try:
-                chunk_size = min(20, max(5, len(texts) // 10))
-                max_workers = min(2, max(1, len(texts) // 100))  # 워커 수 줄임
-                
-                keywords = extract_keywords_parallel(texts, llm, chunk_size=chunk_size, max_workers=max_workers)
-                
-                if not keywords:
-                    return {"error": "키워드 추출 결과가 없습니다.", "texts_analyzed": len(texts)}
-                
-                return {
-                    "keywords": keywords,
-                    "texts_analyzed": len(texts),
-                    "avg_text_length": avg_length,
-                    "chunk_size": chunk_size,
-                    "max_workers": max_workers,
-                    "status": "completed",
-                    "method": "thread_safe_extraction"
-                }
-                
-            except Exception as e:
-                return {"error": f"키워드 추출 중 오류: {str(e)}", "texts_analyzed": len(texts)}
-            
         except Exception as e:
             return {"error": str(e), "texts_analyzed": 0}
 

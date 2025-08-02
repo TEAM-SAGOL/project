@@ -18,7 +18,9 @@ sentiment_map = {
 
 # 1단계: 키워드 감정 분석 (FinBERT + 룰 기반 후처리)
 def analyze_sentiment_with_finbert(texts, llm):
-    freq_df, categorized_df = run_keyword_analysis(texts, llm)
+    result = run_keyword_analysis(texts, llm)
+    freq_df = result["freq_df"]
+    categorized_df = result["categorized"]
     unique_keywords = freq_df["keyword"].tolist()
 
     results = classifier(unique_keywords)

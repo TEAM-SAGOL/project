@@ -7,15 +7,8 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 from matplotlib.ticker import MaxNLocator
 import seaborn as sns
-from modules.categorize import run_keyword_analysis, generate_wordcloud_from_freq
-from modules.summary_module import generate_summary_with_gpt
-from modules.sentiment_module import (
-    analyze_sentiment_with_finbert,
-    refine_neutral_keywords_with_gpt,
-    merge_sentiment_results,
-    summarize_sentiment_by_category
-)
-from langchain.chat_models import ChatOpenAI
+from modules.categorize import generate_wordcloud_from_freq
+from langchain_community.chat_models import ChatOpenAI
 from modules.analysis_pipeline import AnalysisPipeline
 
 # 폰트 설정
@@ -74,7 +67,7 @@ if menu == "🏠 홈":
     st.markdown("---")
     
     #파이프라인 초기화
-    pipeline = AnalysisPipeline()
+    pipeline = AnalysisPipeline(llm=llm)
     
     # 파일 업로드
     uploaded = st.file_uploader(
@@ -150,49 +143,40 @@ if menu == "🏠 홈":
                 if results:
                     # 1️⃣ 키워드 분석 결과 시각화
                     if "keyword_analysis" in results:
-                        keyword_list = results["keyword_analysis"].get("keywords", [])
-                        if keyword_list:
+                        keyword_result = results["keyword_analysis"]
+                        df_kw = keyword_result.get("freq_df")       # 수정: freq_df를 바로 가져옴
+                        keywords = keyword_result.get("keywords")   # 필요시 keyword 리스트로도 저장 가능
+
+                        if isinstance(df_kw, pd.DataFrame) and {'keyword', 'category', 'count'}.issubset(df_kw.columns):
                             st.subheader("☁️ GPT 키워드 기반 워드클라우드")
 
-                            df_kw = pd.DataFrame(keyword_list)
-                            if not df_kw.empty and {'keyword', 'category'}.issubset(df_kw.columns):
-                                # 워드클라우드
-                                wc = generate_wordcloud_from_freq(df_kw)
-                                if wc:
-                                    fig, ax = plt.subplots()
-                                    ax.imshow(wc, interpolation='bilinear')
-                                    ax.axis('off')
-                                    st.pyplot(fig)
-                                else:
-                                    st.warning("워드클라우드를 생성할 수 없습니다.")
+                            # 워드클라우드 
+                            wc = generate_wordcloud_from_freq(df_kw)
+                            if wc:
+                                fig, ax = plt.subplots()
+                                ax.imshow(wc, interpolation='bilinear')
+                                ax.axis('off')
+                                st.pyplot(fig)
                             else:
-                                st.warning("키워드 데이터에 'keyword' 또는 'category' 컬럼이 없습니다.")
+                                st.warning("워드클라우드를 생성할 수 없습니다.")
+                        else:
+                            st.warning("키워드 데이터에 'keyword' 또는 'category' 컬럼이 없습니다.")
 
                             # 키워드 빈도 막대 그래프
                             st.subheader("📊 GPT 키워드 빈도 상위 20개")
-                            try:
-                                df_kw = pd.DataFrame(keyword_list)
 
-                                if "keyword" in df_kw.columns:
-                                    # count 직접 세기
-                                    df_kw = df_kw.groupby(["keyword", "category"]).size().reset_index(name="count")
-                                    
-                                    # 상위 20개 추출
-                                    top20 = df_kw.sort_values(by="count", ascending=False).head(20)
-                        
+                            if freq_df is not None and {'keyword', 'category', 'count'}.issubset(freq_df.columns):
+                                top20 = freq_df.sort_values(by="count", ascending=False).head(20)
 
-                                    fig2, ax2 = plt.subplots()
-                                    sns.barplot(data=top20, y='keyword', x='count', hue='category', dodge=False, ax=ax2)
-                                    ax2.set_ylabel("키워드")
-                                    ax2.set_xlabel("count")
-                                    ax2.xaxis.set_major_locator(MaxNLocator(integer=True))
-                                    st.pyplot(fig2)
-                                else:
-                                    st.warning("키워드 데이터에 'keyword' 컬럼이 없습니다.")
-                            except Exception as e:
-                                st.warning(f"막대그래프 생성 중 오류 발생: {e}")
-                        else:
-                            st.warning("키워드 리스트가 비어 있습니다.")
+                                fig2, ax2 = plt.subplots()
+                                sns.barplot(data=top20, y='keyword', x='count', hue='category', dodge=False, ax=ax2)
+                                ax2.set_ylabel("키워드")
+                                ax2.set_xlabel("count")
+                                st.pyplot(fig2)
+                            else:
+                                st.warning("키워드 데이터에 필수 컬럼이 없습니다.")
+                    else:
+                        st.warning("키워드 리스트가 비어 있습니다.")
 
                     # 2️⃣ 요약 분석 결과 시각화
                     if "summary_analysis" in results:
@@ -226,6 +210,7 @@ if menu == "🏠 홈":
                                 )
                                 fig.update_traces(textinfo='percent+label')
                                 st.plotly_chart(fig)
+                                
                             else:
                                 st.warning("감정 분석 결과가 비어있거나 형식이 맞지 않습니다.")
                         else:
@@ -308,8 +293,6 @@ if menu == "🏠 홈":
             """, 
             unsafe_allow_html=True
         )
-
-
         
                 
 # ✅ 추후 확장용 페이지

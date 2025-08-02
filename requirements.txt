@@ -1,4 +1,5 @@
 absl-py==2.1.0
+accelerate==1.9.0
 aiobotocore @ file:///C:/b/abs_a0zxrsvpwx/croot/aiobotocore_1714464454692/work
 aiofiles @ file:///C:/b/abs_9ex6mi6b56/croot/aiofiles_1683773603390/work
 aiohttp @ file:///C:/b/abs_8860tt1424/croot/aiohttp_1715108828392/work
@@ -95,6 +96,7 @@ docutils @ file:///C:/ci_311/docutils_1676428078664/work
 entrypoints @ file:///C:/ci_311/entrypoints_1676423328987/work
 et-xmlfile==1.1.0
 executing @ file:///opt/conda/conda-bld/executing_1646925071911/work
+fastapi==0.116.1
 fastjsonschema @ file:///C:/b/abs_4ev90296ly/croot/python-fastjsonschema_1731939386416/work
 filelock==3.18.0
 flake8 @ file:///C:/b/abs_caud66drfv/croot/flake8_1708965316778/work
@@ -113,6 +115,7 @@ google-pasta==0.2.0
 greenlet @ file:///C:/b/abs_a6c75ie0bc/croot/greenlet_1702060012174/work
 grpcio==1.64.0
 h11==0.14.0
+h5py==3.14.0
 HeapDict @ file:///Users/ktietz/demo/mc3/conda-bld/heapdict_1630598515714/work
 httpcore==1.0.5
 httpx==0.27.0
@@ -167,12 +170,13 @@ jupyterlab-pygments @ file:///tmp/build/80754af9/jupyterlab_pygments_16014907206
 jupyterlab-widgets @ file:///C:/b/abs_62picw9xos/croot/jupyterlab_widgets_1709323131962/work
 jupyterlab_server @ file:///C:/b/abs_e08i7qn9m8/croot/jupyterlab_server_1699555481806/work
 kaleido @ file:///C:/b/abs_60smvjz1os/croot/python-kaleido_1689927138239/work
-keras==3.3.3
+keras==3.11.0
 keyring @ file:///C:/b/abs_596d81ux2c/croot/keyring_1745484709696/work
 kiwisolver @ file:///C:/ci_311/kiwisolver_1676431979301/work
 langchain==0.3.27
 langchain-community==0.3.27
 langchain-core==0.3.72
+langchain-openai==0.3.28
 langchain-text-splitters==0.3.9
 langsmith==0.4.8
 lazy-object-proxy @ file:///C:/b/abs_19td_nzb6n/croot/lazy-object-proxy_1712908735070/work
@@ -219,7 +223,7 @@ networkx @ file:///C:/b/abs_36fmumtynt/croot/networkx_1720002497414/work
 nltk @ file:///C:/b/abs_a638z6l1z0/croot/nltk_1688114186909/work
 notebook @ file:///C:/b/abs_09nvambyty/croot/notebook_1719499424678/work
 notebook_shim @ file:///C:/b/abs_a5xysln3lb/croot/notebook-shim_1699455926920/work
-numpy==2.3.2
+numpy==1.26.4
 numpydoc @ file:///C:/b/abs_bbspp5l8vu/croot/numpydoc_1718279185573/work
 openai==1.97.1
 openapi-codec==1.3.2
@@ -352,23 +356,26 @@ spyder-kernels @ file:///C:/b/abs_e5u6y4ldr2/croot/spyder-kernels_1707937767956/
 SQLAlchemy @ file:///C:/b/abs_aa2izo0xio/croot/sqlalchemy_1718378184063/work
 sqlparse==0.5.0
 stack-data @ file:///opt/conda/conda-bld/stack_data_1646927590127/work
+starlette==0.47.2
 streamlit==1.47.0
 sympy==1.14.0
 tabulate @ file:///C:/b/abs_21rf8iibnh/croot/tabulate_1701354830521/work
 TBB==0.2
 tblib @ file:///Users/ktietz/demo/mc3/conda-bld/tblib_1629402031467/work
 tenacity @ file:///C:/b/abs_d2_havtscu/croot/tenacity_1721222514290/work
-tensorboard==2.16.2
+tensorboard==2.19.0
 tensorboard-data-server==0.7.2
-tensorflow==2.16.1
+tensorflow==2.19.0
 tensorflow-intel==2.16.1
 tensorflow-io-gcs-filesystem==0.31.0
 termcolor==2.4.0
 terminado @ file:///C:/ci_311/terminado_1678228513830/work
 text-unidecode @ file:///Users/ktietz/demo/mc3/conda-bld/text-unidecode_1629401354553/work
 textdistance @ file:///tmp/build/80754af9/textdistance_1612461398012/work
+tf_keras==2.19.0
 threadpoolctl @ file:///C:/b/abs_def0dwqlft/croot/threadpoolctl_1719407816649/work
 three-merge @ file:///tmp/build/80754af9/three-merge_1607553261110/work
+tiktoken==0.9.0
 tinycss2 @ file:///C:/ci_311/tinycss2_1676425376744/work
 tldextract @ file:///opt/conda/conda-bld/tldextract_1646638314385/work
 tokenizers==0.19.1
@@ -380,7 +387,7 @@ torch==2.7.1
 tornado @ file:///C:/b/abs_7dzpc171lf/croot/tornado_1748956950306/work
 tqdm==4.67.1
 traitlets @ file:///C:/b/abs_bfsnoxl4pq/croot/traitlets_1718227069245/work
-transformers==4.40.1
+transformers==4.41.2
 truststore @ file:///C:/b/abs_494cm143zh/croot/truststore_1736550137835/work
 Twisted @ file:///C:/b/abs_e7yqd811in/croot/twisted_1708702883769/work
 twisted-iocpsupport @ file:///C:/ci_311/twisted-iocpsupport_1676447612160/work
@@ -394,6 +401,7 @@ unicodedata2 @ file:///C:/b/abs_b6apldlg7y/croot/unicodedata2_1713212998255/work
 Unidecode @ file:///tmp/build/80754af9/unidecode_1614712377438/work
 uritemplate==4.1.1
 urllib3==2.5.0
+uvicorn==0.35.0
 w3lib @ file:///C:/b/abs_957begrwnl/croot/w3lib_1708640020760/work
 watchdog @ file:///C:/b/abs_b3l_3s276z/croot/watchdog_1717166538403/work
 wcwidth @ file:///Users/ktietz/demo/mc3/conda-bld/wcwidth_1629357192024/work
