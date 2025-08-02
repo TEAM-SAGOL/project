@@ -165,8 +165,8 @@ if menu == "🏠 홈":
                             # 키워드 빈도 막대 그래프
                             st.subheader("📊 GPT 키워드 빈도 상위 20개")
 
-                            if freq_df is not None and {'keyword', 'category', 'count'}.issubset(freq_df.columns):
-                                top20 = freq_df.sort_values(by="count", ascending=False).head(20)
+                            if df_kw is not None and {'keyword', 'category', 'count'}.issubset(df_kw.columns):
+                                top20 = df_kw.sort_values(by="count", ascending=False).head(20)
 
                                 fig2, ax2 = plt.subplots()
                                 sns.barplot(data=top20, y='keyword', x='count', hue='category', dodge=False, ax=ax2)

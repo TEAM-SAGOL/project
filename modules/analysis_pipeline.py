@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from typing import Dict, Any, Optional
 import json
+from collections import OrderedDict 
 from datetime import datetime
 import random
 import time
@@ -11,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from langchain_openai import ChatOpenAI
 from modules.profiling_module import AnalysisPlan, validate_plan
 from modules.ui_components import display_analysis_plan, display_plan_review_interface, feedback_input_interface
-from modules.categorize import generate_wordcloud_from_freq, categorize_keywords_batch, run_keyword_analysis
+from modules.categorize import categorize_keywords_batch, run_keyword_analysis
 from modules.summary_module import generate_summary_with_gpt 
 from modules.sentiment_module import merge_sentiment_results, refine_neutral_keywords_with_gpt, analyze_sentiment_with_finbert, summarize_sentiment_by_category
 
@@ -43,15 +44,6 @@ class AnalysisPipeline:
 
         result = run_keyword_analysis(texts, self.llm)
         return result 
-    
-    # 감정 분석 
-    def sentiment_result(self, data, target_columns):
-        texts = []
-        for col in target_columns:
-            if col in data.columns:
-                texts.extend(data[col].dropna().astype(str).tolist())
-        
-        return summarize_sentiment_by_category(texts, self.llm)
         
     # 분석 요약 
     def summary_result(self, data, target_columns):
@@ -61,36 +53,22 @@ class AnalysisPipeline:
                 texts.extend(data[col].dropna().astype(str).tolist())
         return generate_summary_with_gpt(texts, self.llm)
     
-    def _display_summary_results(self, summary_result: dict) -> str:
-        return summary_result.get("summary", "")
-
-    def _display_sentiment_results(self, sentiment_result: dict) -> pd.DataFrame:
-        return sentiment_result.get("summary_df")
-
     def _display_keyword_results(self, keyword_result: dict) -> pd.DataFrame:
         freq_df = keyword_result.get("freq_df")  # 'freq_df' 키로 저장된 데이터를 가져옴
         if isinstance(freq_df, pd.DataFrame):
             return freq_df
         return pd.DataFrame()
     
+    def _display_sentiment_results(self, sentiment_result: dict) -> pd.DataFrame:
+        return sentiment_result.get("summary_df")
+    
+    def _display_summary_results(self, summary_result: dict) -> str:
+        return summary_result.get("summary", "")
+   
+    
     def step1_generate_plan(self, data: pd.DataFrame, description: str):
         """1단계: 분석 기획서 생성"""
         st.header("1️⃣ 스마트 AI 분석 기획서 생성")  # 제목 변경
-        
-        # col1, col2 = st.columns([2, 1])
-        
-        # with col1:
-        #     st.write("**데이터 미리보기**")
-        #     st.dataframe(data.head())
-        
-        # with col2:
-        #     st.write("**데이터 정보**")
-        #     st.write(f"- 행 수: {len(data):,}")
-        #     st.write(f"- 컬럼 수: {len(data_subjectdata.columns)}")
-        #     st.write(f"- 컬럼: {', '.join(data.columns[:3])}{'...' if len(data.columns) > 3 else ''}")
-        
-        # st.write("**데이터 설명**")
-        # st.write(description)
         
         # 기획서 생성 버튼
         if st.button("🤖 AI 분석 계획 생성 (강화버전)", type="primary", use_container_width=True):  # 버튼명 변경
@@ -171,10 +149,12 @@ class AnalysisPipeline:
         
         st.write("**실행 예정 분석**")
         execution_list = []
-        if modules["sentiment_analysis"]["use"]:
-            execution_list.append("😊 감정 분석")
         if modules["keyword_analysis"]["use"]:
             execution_list.append("🔤 키워드 분석")
+            
+        if modules["sentiment_analysis"]["use"]:
+            execution_list.append("😊 감정 분석")
+        
         if modules["summary_analysis"]["use"]:
             execution_list.append("📝 요약 분석")
         
@@ -185,9 +165,18 @@ class AnalysisPipeline:
             st.error("실행할 분석이 없습니다. 기획서를 다시 검토해주세요.")
             return False
         
+        # 실행 순서 고정 
+        ordered_modules = OrderedDict()
+        for key in ["keyword_analysis", "sentiment_analysis", "summary_analysis"]:
+            if modules.get(key, {}).get("use", False):
+                ordered_modules[key] = modules[key]
+        
         # 분석 실행 버튼
         if st.button("🔍 분석 시작", type="primary", use_container_width=True):
+            plan["recommended_modules"] = ordered_modules
+            breakpoint()
             results = self._run_analysis(data, plan)
+            
             
             if results:
                 st.session_state.analysis_results = results
@@ -241,6 +230,7 @@ class AnalysisPipeline:
         
         # 분석 대상 데이터 준비
         target_data = self._prepare_analysis_data(data, plan)
+        print(plan)
         
         if target_data is None or target_data.empty:
             st.error("분석할 데이터가 없습니다.")
@@ -391,7 +381,7 @@ class AnalysisPipeline:
                     valid_texts = data[col].dropna().astype(str)
                     valid_texts = valid_texts[valid_texts.str.strip() != '']
                     texts.extend(valid_texts.tolist())
-                    progress_container.write(f'   - [{col}] 컬럼에서 텍스트 {len(valid_texts):,}개 텍스트 수집')
+                    progress_container.write(f'- [{col}] 컬럼에서 텍스트 {len(valid_texts):,}개 텍스트 수집')
             
             if not texts:
                 error_msg = f"❌ 분석할 텍스트가 없습니다.\n대상 컬럼: {target_columns}\n각 컬럼의 데이터 상태를 확인해주세요."
@@ -495,13 +485,13 @@ class AnalysisPipeline:
 
 
             # 감정 분석 전체 파이프라인
-            sentiment_df, _, categorized_df = analyze_sentiment_with_finbert(texts, llm)  # llm 없이 진행
+            sentiment_df, freq_df, categorized_df = analyze_sentiment_with_finbert(texts, llm)
             refined_df = refine_neutral_keywords_with_gpt(sentiment_df, None)
             updated_df = merge_sentiment_results(sentiment_df, refined_df)
             summary = summarize_sentiment_by_category(categorized_df, updated_df)
 
             return {
-                "summary_df": summary,  # PieChart용 감정 분포
+                "summary_df": summarize_sentiment_by_category(freq_df, updated_df),
                 "updated_sentiment_df": updated_df,
                 "texts_analyzed": len(texts),
                 "status": "completed"
@@ -607,17 +597,20 @@ class AnalysisPipeline:
                 futures = {}
                 
                 # 🔧 스레드 안전한 분석 함수들 실행
-                if modules.get("sentiment_analysis", {}).get("use", False):
-                    futures["sentiment"] = executor.submit(self._run_sentiment_analysis_fast, data, target_columns)
-                    status_placeholder.write("😊 감정 분석 시작됨...")
-                
-                if modules.get("keyword_analysis", {}).get("use", False):
+                if modules.get("keyword_analysis", {}).get("use", True):
                     futures["keyword"] = executor.submit(self.keyword_analysis, data, target_columns)
                     status_placeholder.write("🔑 키워드 분석 시작됨...")
-                
-                if modules.get("summary_analysis", {}).get("use", False):
+                    print("키워드분석 시작됨.")
+                    
+                    if modules.get("sentiment_analysis", {}).get("use", True):
+                        futures["sentiment"] = executor.submit(self._run_sentiment_analysis_fast, data, target_columns)
+                    status_placeholder.write("😊 감정 분석 시작됨...")
+                    print("감정분석 시작됨.")
+                    
+                if modules.get("summary_analysis", {}).get("use", True):
                     futures["summary"] = executor.submit(self._run_summary_analysis, data, target_columns)
                     status_placeholder.write("📝 요약 분석 시작됨...")
+                    print("요약분석 시작됨.")
                 
                 # 🔧 결과 수집 (메인 스레드에서 UI 업데이트)
                 results = {}
@@ -629,22 +622,24 @@ class AnalysisPipeline:
                         # 진행률 업데이트
                         progress_placeholder.progress(completed_count / total_analyses)
                         status_placeholder.write(f"⚡ {analysis_type} 분석 완료 대기 중...")
+                        #result = future.result(timeout=400)  # 5분 타임아웃
                         
-                        result = future.result(timeout=300)  # 5분 타임아웃
-                        
-                        if result and not result.get("error"):
-                            results[f"{analysis_type}_analysis"] = result
-                            st.success(f"✅ {analysis_type} 분석 완료!")
-                        else:
-                            st.error(f"❌ {analysis_type} 분석 실패: {result.get('error', '알 수 없는 오류')}")
+                        #if result and not result.get("error"):
+                            #results[f"{analysis_type}_analysis"] = result
+                            #st.success(f"✅ {analysis_type} 분석 완료!")
+                        #else:
+                            #st.error(f"❌ {analysis_type} 분석 실패: {result.get('error', '알 수 없는 오류')}")
                         
                         completed_count += 1
                         progress_placeholder.progress(completed_count / total_analyses)
                         
+                                           
                     except Exception as e:
                         st.error(f"❌ {analysis_type} 분석 중 예외: {str(e)}")
+                        import traceback
+                        st.text(traceback.format_exc())
                         completed_count += 1
-                        progress_placeholder.progress(completed_count / total_analyses)
+                        progress_placeholder.progress(completed_count / len(futures))
         
             # 최종 처리
             progress_placeholder.empty()

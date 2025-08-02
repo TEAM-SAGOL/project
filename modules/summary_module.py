@@ -23,6 +23,7 @@ def generate_summary_with_gpt(texts):
             temperature=0
         )
         return response.choices[0].message.content
+        
     except Exception as e:
         return f"❌ GPT 요약 실패: {e}"
 
